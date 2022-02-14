@@ -1,62 +1,79 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout, QScrollArea, QListWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
-from manga import view_manga_catalog, view_manga_page
-import manga_page
-
-
+from PyQt5 import uic
+from manga import view_manga_catalog, view_manga_page, view_manga
 
 
 class MainWindow(QMainWindow):
-
     def __init__(self):
         super(MainWindow, self).__init__()
-        self.setWindowTitle('Popka')
-        self.setGeometry(100,50,600,400)
-        self.initUI()
+        uic.loadUi('gui.ui', self)
+        self.splitter.setSizes([1,0])
+        self.horizontal_splitter.setSizes([1,0])
+        self.loadCatalog()
+        self.manga_list.itemClicked.connect(self.selectManga)
+        self.manga_select_chapter_btn.clicked.connect(self.selectChapter)
+        self.manga_branch.itemClicked.connect(self.selectedChapter)
+        self.manga_read_btn.clicked.connect(self.readManga)
+        self.setCentralWidget(self.stack)
+        self.stack.setCurrentIndex(0)
         self.show()
 
-    def initUI(self):
-
-        self.wiget = QWidget()
-        self.scrollarea = QScrollArea()
-        self.vbox = QVBoxLayout()
-
+    def loadCatalog(self):
         self.catalog = view_manga_catalog()
-        self.wiget_list = QListWidget(self)
-        for i in self.catalog.keys():
-            self.wiget_list.addItem(i)
-
-        self.vbox.addWidget(self.wiget_list)
-        self.wiget_list.currentItemChanged.connect(self.selectManga)
-
-
-        self.wiget.setLayout(self.vbox)
-
-        self.scrollarea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.scrollarea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scrollarea.setWidgetResizable(True)
-        self.scrollarea.setWidget(self.wiget)
-
-        self.setCentralWidget(self.scrollarea)
-
+        for key in self.catalog.keys():
+            self.manga_list.addItem(key)
 
     def selectManga(self, item):
-        dir, page = self.catalog[item.text()][0], self.catalog[item.text()][1]
+        self.splitter.setSizes([300,100])
+        page_manga = view_manga_page(*self.catalog[item.text()])
+        pix = QPixmap(page_manga['img'])
+        self.manga_img.setPixmap(pix)
+        self.manga_description.setText(page_manga['description'])
+        self.branch = page_manga['branch']
+        self.dir = page_manga['manga_dir']
 
-        self.window = QWidget()
-        self.ui = manga_page.Example()
-        self.ui.initUI(self.window)
-        self.ui.loadPage(dir, page)
-        self.window.show()
+    def selectChapter(self):
+        self.horizontal_splitter.setSizes([0,1])
+        index = 1
+        for i in self.branch:
+            item = f"{index}. Том {i['tome']}, глава {i['chapter']}."
+            self.manga_branch.addItem(item)
+            index += 1
+
+
+    def selectedChapter(self, item):
+        self.index_chapter = int(item.text().split('.')[0]) - 1
+        print(self.branch[self.index_chapter])
+
+    def readManga(self):
+        self.stack.setCurrentIndex(1)
+        tome = str(self.branch[self.index_chapter]['tome'])
+        chapter = str(self.branch[self.index_chapter]['chapter'])
+        name = self.branch[self.index_chapter]['name']
+        id = str(self.branch[self.index_chapter]['id'])
+        manga_chapter = view_manga(tome, chapter, name, id, self.dir)
+        if self.vbox_frames is not None:
+            while self.vbox_frames.count():
+                child = self.vbox_frames.takeAt(0)
+                if child.widget() is not None:
+                    child.widget().deleteLater()
+        for frame in manga_chapter[:-1]:
+            pix = QPixmap(str(frame))
+            lbl = QLabel()
+            lbl.setPixmap(pix)
+            lbl.setAlignment(Qt.AlignHCenter)
+            self.vbox_frames.addWidget(lbl)
+        back_btn = QPushButton('Back')
+        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
+        self.vbox_frames.addWidget(back_btn)
+        self.setMinimumWidth(pix.width())
+        self.setMinimumHeight(600)
 
 
 
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    ex = MainWindow()
-    sys.exit(app.exec_())
-
-
+app = QApplication(sys.argv)
+window = MainWindow()
+sys.exit(app.exec_())
