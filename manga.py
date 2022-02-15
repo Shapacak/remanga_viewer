@@ -81,6 +81,7 @@ def view_manga_catalog():
     return catalog_dict
 
 
+
 def view_manga_page(manga_dir, manga_name):
     manga_page = create_json(api_url_get_manga + manga_dir, manga_name, manga_dir)
     br = max(manga_page['content']['branches'], key=lambda x: x['count_chapters'])
