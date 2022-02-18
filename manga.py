@@ -13,57 +13,38 @@ api_url_get_manga_filters = 'https://api.remanga.org/api/forms/titles/' \
                             '?get=genres&get=categories&get=types&get=status&get=age_limit'
 api_url_all_manga = 'https://api.remanga.org/api/search/catalog/?ordering=-rating&count=30&page='
 api_url_get_manga = 'https://api.remanga.org/api/titles/'
-api_url_get_manga_branch = 'https://api.remanga.org/api/titles/chapters/?branch_id='
+api_url_get_manga_branch = 'https://api.remanga.org/api/titles/chapters/?ordering=index&count=60&branch_id='
 api_url_get_manga_chapters = 'https://api.remanga.org/api/titles/chapters/'
 
 
-def create_json_for_catalog(url, name, dir=''):
-    p = Path(dir, name).with_suffix('.json')
-    if not p.exists():
-        catalog_response = requests.get(url).json()
-        with open(p, 'w', encoding='utf-8') as json_file:
-            json.dump(catalog_response, json_file)
-            return catalog_response
-
-    catalog_response = requests.get(url).json()
-
-    with open(p, 'r', encoding='utf-8') as rjson:
-        catalog = json.load(rjson)
-
-    if catalog['content'][-1]['id'] != catalog_response['content'][-1]['id']:
-        catalog['content'] = catalog['content'] + catalog_response['content']
-        with open(p, 'w', encoding='utf-8') as json_file:
-            json.dump(catalog, json_file)
-        return catalog_response
-    else:
-        return catalog
-
-def create_json_for_manga(url, name, dir=''):
+def create_json(url, name, dir='', load=True):
     p = Path(dir, name).with_suffix('.json')
     if not p.parent.is_dir():
         p.parent.mkdir(parents=True)
     if not p.exists():
-        r = requests.get(url).json()
+        response = requests.get(url).json()
         with open(p, 'w', encoding='utf-8') as json_file:
-            json.dump(r, json_file)
-            return r
-    r = requests.get(url).json()
-    with open(p, 'a', encoding='utf-8') as json_file:
-        json.dump(r, json_file)
-    with open(p, 'r', encoding='utf-8') as rjson:
-        catalog = json.load(rjson)
-        return catalog
+            json.dump(response, json_file)
+            return response
+    if load == False:
+        with open(p, 'r', encoding='utf-8') as rjson:
+            stored_json = json.load(rjson)
+            return stored_json
+    else:
+        response = requests.get(url).json()
+        if response['content'] != []:
+            with open(p, 'r', encoding='utf-8') as rjson:
+                stored_json = json.load(rjson)
+            if not next((x for x in stored_json['content'] if x["id"] == response['content'][-1]['id']), None):
+                response['content'] = stored_json['content'] + response['content']
+                with open(p, 'w', encoding='utf-8') as json_file:
+                    json.dump(response, json_file)
+                    return response
+            else:
+                return stored_json
+        else:
+            return
 
-def create_json(url, name):
-    p = Path(name).with_suffix('.json')
-    if not p.is_file():
-        filters_response = requests.get(url).json()
-        with open(p, 'w', encoding='utf-8') as filters_file:
-            json.dump(filters_response, filters_file)
-            return filters_response
-    with open(p, 'r', encoding='utf-8') as filters_file:
-        filters = json.load(filters_file)
-        return filters
 
 def image_creator(url, name, dir):
     p = Path(dir, name).with_suffix('.jpg')
@@ -108,25 +89,39 @@ def download_frame_with_list(path, frame_parts):
     return frame_path
 
 def get_filters():
-    all_filters = create_json(api_url_get_manga_filters, 'filters')
+    all_filters = create_json(api_url_get_manga_filters, 'filters', '', False)
     return all_filters['content']
 
+def filters_string_builder(selected_filters:list):
+    filter_string = ''
+    for filter in selected_filters:
+        filter_string = filter_string + f'&{filter[0]}={filter[1]}'
 
+    return filter_string
 
-def view_manga_catalog(page=1):
-    all_manga_json = create_json_for_catalog(api_url_all_manga + str(page), 'all manga')
-    # pprint(all_manga_json['content'])
-    catalog_dict = {x['rus_name']: [x['dir'], x['en_name']] for x in all_manga_json['content']}
+def view_manga_catalog(page=1, filter_string=''):
+    if not filter_string:
+        manga_json_response = create_json(api_url_all_manga + str(page), 'all manga')
+    else:
+        manga_json_response = requests.get(api_url_all_manga + str(page) + filter_string).json()
+
+    catalog_dict = {x['rus_name']: [x['dir'], x['en_name']] for x in manga_json_response['content']}
     return catalog_dict
 
-
+a = view_manga_catalog()
 
 def view_manga_page(manga_dir, manga_name):
-    manga_page = create_json_for_manga(api_url_get_manga + manga_dir, manga_name, manga_dir)
+    manga_page = create_json(api_url_get_manga + manga_dir, manga_name, manga_dir, False)
     br = max(manga_page['content']['branches'], key=lambda x: x['count_chapters'])
-    branch_manga = create_json_for_manga(api_url_get_manga_branch + str(br['id']), 'branch', manga_dir)
+    count_chapters = br['count_chapters']
+    page = 1
+    while True:
+        branch_manga = create_json(f"{api_url_get_manga_branch}{br['id']}&page={page}", 'branch', manga_dir)
+        page += 1
+        if len(branch_manga['content']) >= count_chapters:
+            break
     branch_list = []
-    for i in reversed(branch_manga['content']):
+    for i in branch_manga['content']:
         if not i['is_paid']:
             branch_list.append({'chapter': i['chapter'],
                                 'tome': i['tome'],
@@ -140,11 +135,12 @@ def view_manga_page(manga_dir, manga_name):
     return page_dict
 
 
+
 def view_manga(tome, chapter, name, id, manga_dir):
     if not name:
         name = chapter
     path_dir = Path(manga_dir, tome, chapter)
-    chapter_response = create_json_for_manga(api_url_get_manga_chapters + id, name, path_dir)
+    chapter_response = create_json(api_url_get_manga_chapters + id, name, path_dir, False)
     frames = chapter_response['content']['pages']
     frames_list = []
     if type(frames[0]) is list:

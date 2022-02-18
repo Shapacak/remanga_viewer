@@ -1,9 +1,10 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QAction, QToolBar, QListWidget, QComboBox
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton,
+                             QAction, QToolBar, QListWidget, QComboBox, QHBoxLayout)
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QEvent
 from PyQt5 import uic
-from manga import view_manga_catalog, view_manga_page, view_manga, get_filters
+from manga import view_manga_catalog, view_manga_page, view_manga, get_filters, filters_string_builder
 from gui import Ui_Form
 
 
@@ -13,10 +14,12 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
         uic.loadUi('gui.ui', self)
         self.splitter.setSizes([1,0])
+        self.splitter_tab.setSizes([0,1])
         self.horizontal_splitter.setSizes([1,0])
-        self.loadCatalog()
         self.initMainToolbar()
+        self.initFiltersTab()
         self.initFramesToolbar()
+        self.loadCatalog()
         self.manga_list.itemClicked.connect(self.selectManga)
         self.manga_select_chapter_btn.clicked.connect(self.selectChapter)
         self.manga_branch.itemClicked.connect(self.selectedChapter)
@@ -38,16 +41,30 @@ class MainWindow(QMainWindow):
             self.toolf.hide()
         return super(MainWindow, self).eventFilter(source, event)
 
-
     def initMainToolbar(self):
         self.main_tool = QToolBar()
         self.main_tool.setMovable(False)
-        btn_filter = QPushButton('Фильтры')
-        btn_filter.clicked.connect(self.applyFilters)
-        self.main_tool.addWidget(btn_filter)
-        self.genres_boxes_builder()
+        self.visible_filters = False
+        filters_action = QAction('Filters', self)
+        filters_action.triggered.connect(self.enableFilters)
+        self.main_tool.addAction(filters_action)
         self.addToolBar(Qt.TopToolBarArea, self.main_tool)
 
+    def initFiltersTab(self):
+        self.filters_layout = QHBoxLayout()
+        self.check_combo_list = []
+        self.filters_dict = get_filters()
+        for key in self.filters_dict:
+            check_combo = CheckableComboBox()
+            check_combo.addItem(key)
+            for i in self.filters_dict[key]:
+                check_combo.addItem(i['name'])
+            self.check_combo_list.append(check_combo)
+            self.filters_layout.addWidget(check_combo)
+        btn_apply = QPushButton('Принять')
+        btn_apply.clicked.connect(self.applyFilters)
+        self.filters_layout.addWidget(btn_apply)
+        self.tab.setLayout(self.filters_layout)
 
     def initFramesToolbar(self):
         self.toolf = QToolBar()
@@ -67,9 +84,8 @@ class MainWindow(QMainWindow):
         self.toolf.addWidget(btn_continue)
         self.addToolBar(Qt.RightToolBarArea, self.toolf)
 
-
-
     def loadCatalog(self):
+        self.manga_list.clear()
         self.catalog = view_manga_catalog()
         for key in self.catalog.keys():
             self.manga_list.addItem(key)
@@ -86,6 +102,8 @@ class MainWindow(QMainWindow):
 
     def selectChapter(self):
         self.horizontal_splitter.setSizes([0,1])
+        self.manga_branch.clear()
+        self.tool_branch.clear()
         index = 1
         for i in self.branch:
             item = f"{index}. Том {i['tome']}, глава {i['chapter']}."
@@ -95,7 +113,6 @@ class MainWindow(QMainWindow):
 
     def selectedChapter(self, item):
         self.index_chapter = int(item.text().split('.')[0]) - 1
-
 
     def readManga(self):
         self.stack.setCurrentIndex(1)
@@ -136,48 +153,56 @@ class MainWindow(QMainWindow):
             self.index_chapter -= 1
             self.readManga()
 
-    def genres_boxes_builder(self):
-        filters = get_filters()
-        for fname, fcontent in filters.items():
-            check_combo = CheckableComboBox()
-            check_combo.addItem(fname)
-            for filter in fcontent:
-                check_combo.addItem(filter['name'])
-            self.main_tool.addWidget(check_combo)
+    def enableFilters(self):
+        if self.visible_filters:
+            self.visible_filters = False
+            self.splitter_tab.setSizes([0,1])
+        else:
+            self.splitter_tab.setSizes([20, 300])
+            self.visible_filters = True
+
 
     def applyFilters(self):
-        ass = {}
-        for box in self.main_tool.findChildren(CheckableComboBox):
-            sd = []
-            for i in box.getItems():
-                if i.checkState() == Qt.Checked:
-                    print(i.text())
-
-
-
-
-
+        filters_list = []
+        for box in self.check_combo_list:
+            if box.getCheckedItems():
+                for item in box._checked:
+                    id_filter = next(x['id'] for x in self.filters_dict[box[0].text()] if x["name"] == item.text())
+                    filters_list.append([box[0].text(), id_filter])
+        if filters_list:
+            self.manga_list.clear()
+            fstr = filters_string_builder(filters_list)
+            print(fstr)
+            self.catalog = view_manga_catalog(filter_string=fstr)
+            for key in self.catalog.keys():
+                self.manga_list.addItem(key)
+        else:
+            self.loadCatalog()
 
 class CheckableComboBox(QComboBox):
     def __init__(self, parent=None):
         super(CheckableComboBox, self).__init__(parent)
         self._changed = False
+        self._checked = []
         self.view().pressed.connect(self.handleItemPressed)
 
-    def getItems(self):
+    def __getitem__(self, index):
+        item = self.model().item(index, self.modelColumn())
+        return item
+
+    def __iter__(self):
         for index in range(self.count()):
             yield self.model().item(index, self.modelColumn())
 
+    def getCheckedItems(self):
+        return self._checked
 
     def setItemChecked(self, index, checked=False):
         item = self.model().item(index, self.modelColumn())
-
         if checked:
             item.setCheckState(Qt.Checked)
         else:
             item.setCheckState(Qt.Unchecked)
-
-
         self.view().pressed.connect(self.handleItemPressed)
 
     def handleItemPressed(self, index):
@@ -187,8 +212,10 @@ class CheckableComboBox(QComboBox):
         item = self.model().itemFromIndex(index)
         if item.checkState() == Qt.Checked:
             item.setCheckState(Qt.Unchecked)
+            self._checked.remove(item)
         else:
             item.setCheckState(Qt.Checked)
+            self._checked.append(item)
         self._changed = True
 
     def hidePopup(self):
