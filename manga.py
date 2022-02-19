@@ -7,11 +7,13 @@ from pprint import pprint
 import os
 from pathlib import Path
 import io
+import urllib.parse
 
 api_url = 'https://api.remanga.org/api'
 api_url_get_manga_filters = 'https://api.remanga.org/api/forms/titles/' \
                             '?get=genres&get=categories&get=types&get=status&get=age_limit'
 api_url_all_manga = 'https://api.remanga.org/api/search/catalog/?ordering=-rating&count=30&page='
+api_url_search = 'https://api.remanga.org/api/search/?query='
 api_url_get_manga = 'https://api.remanga.org/api/titles/'
 api_url_get_manga_branch = 'https://api.remanga.org/api/titles/chapters/?ordering=index&count=60&branch_id='
 api_url_get_manga_chapters = 'https://api.remanga.org/api/titles/chapters/'
@@ -95,22 +97,33 @@ def get_filters():
 def filters_string_builder(selected_filters:list):
     filter_string = ''
     for filter in selected_filters:
-        filter_string = filter_string + f'&{filter[0]}={filter[1]}'
-
+        if len(filter) == 2:
+            filter_string = filter_string + f'&{filter[0]}={filter[1]}'
+        else:
+            filter_string = filter_string + f'&ordering=-{filter}'
     return filter_string
+
+
 
 def view_manga_catalog(page=1, filter_string=''):
     if not filter_string:
         manga_json_response = create_json(api_url_all_manga + str(page), 'all manga')
     else:
         manga_json_response = requests.get(api_url_all_manga + str(page) + filter_string).json()
-
     catalog_dict = {x['rus_name']: [x['dir'], x['en_name']] for x in manga_json_response['content']}
     return catalog_dict
 
-a = view_manga_catalog()
+def get_search_catalog(query_string, count=5):
+    encode = urllib.parse.quote(query_string.encode('utf-8'))
+    response = requests.get(f'{api_url_search}{encode}&count={str(count)}').json()
+    search_catalog_dict = {x['rus_name']: [x['dir'], x['en_name']] for x in response['content']}
+    return search_catalog_dict
+
 
 def view_manga_page(manga_dir, manga_name):
+    if '/' in manga_name:
+        temp = manga_name.split('/')
+        manga_name = temp[0] + temp[1]
     manga_page = create_json(api_url_get_manga + manga_dir, manga_name, manga_dir, False)
     br = max(manga_page['content']['branches'], key=lambda x: x['count_chapters'])
     count_chapters = br['count_chapters']
