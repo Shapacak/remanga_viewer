@@ -18,6 +18,48 @@ api_url_get_manga = 'https://api.remanga.org/api/titles/'
 api_url_get_manga_branch = 'https://api.remanga.org/api/titles/chapters/?ordering=index&count=60&branch_id='
 api_url_get_manga_chapters = 'https://api.remanga.org/api/titles/chapters/'
 
+def init_library():
+    p = Path('manga_lib.json')
+    if p.exists():
+        with open(p, 'r', encoding='utf-8') as lib_file:
+            manga_lib = json.load(lib_file)
+            return manga_lib
+    else:
+        manga_lib = {}
+        with open(p, 'w', encoding='utf-8') as lib_file:
+            json.dump(manga_lib, lib_file)
+
+
+def updater(manga_dir, len_branch):
+    response = requests.get(api_url_get_manga+manga_dir).json()
+    br = max(response['content']['branches'], key=lambda x: x['count_chapters'])
+    count_chapters = br['count_chapters']
+    if count_chapters > len_branch:
+        return count_chapters - len_branch
+
+
+def continue_read_manga(manga_dir):
+    branch_list = []
+    with open(f'{manga_dir}/branch.json', 'r', encoding='utf-8') as branch_json:
+        branch = json.load(branch_json)
+        for i in branch['content']:
+            if not i['is_paid']:
+                branch_list.append({'chapter': i['chapter'],
+                                    'tome': i['tome'],
+                                    'name': i['name'],
+                                    'id': i['id']})
+        return branch_list
+
+
+
+def add_manga_in_library(add_manga):
+    p = Path('manga_lib.json')
+    with open(p, 'r', encoding='utf-8') as lib_file:
+        manga_lib = json.load(lib_file)
+    manga_lib[add_manga[0]] = add_manga[1:]
+    with open(p, 'w', encoding='utf-8') as lib_file:
+        json.dump(manga_lib, lib_file)
+
 
 def create_json(url, name, dir='', load=True):
     p = Path(dir, name).with_suffix('.json')
@@ -47,7 +89,6 @@ def create_json(url, name, dir='', load=True):
         else:
             return
 
-
 def image_creator(url, name, dir):
     p = Path(dir, name).with_suffix('.jpg')
     if not p.is_file():
@@ -55,7 +96,6 @@ def image_creator(url, name, dir):
         with open(p, 'bw') as imgf:
             imgf.write(image_response.content)
     return str(p)
-
 
 def download_frame_with_dict(url, path):
   if not path.is_file():
@@ -103,8 +143,6 @@ def filters_string_builder(selected_filters:list):
             filter_string = filter_string + f'&ordering=-{filter}'
     return filter_string
 
-
-
 def view_manga_catalog(page=1, filter_string=''):
     if not filter_string:
         manga_json_response = create_json(api_url_all_manga + str(page), 'all manga')
@@ -118,7 +156,6 @@ def get_search_catalog(query_string, count=5):
     response = requests.get(f'{api_url_search}{encode}&count={str(count)}').json()
     search_catalog_dict = {x['rus_name']: [x['dir'], x['en_name']] for x in response['content']}
     return search_catalog_dict
-
 
 def view_manga_page(manga_dir, manga_name):
     if '/' in manga_name:

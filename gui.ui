@@ -58,7 +58,7 @@
               <item row="0" column="0">
                <widget class="QTabWidget" name="tabWidget">
                 <property name="currentIndex">
-                 <number>0</number>
+                 <number>3</number>
                 </property>
                 <widget class="QWidget" name="filters_tab">
                  <attribute name="title">
@@ -68,6 +68,16 @@
                 <widget class="QWidget" name="search_tab">
                  <attribute name="title">
                   <string>Поиск</string>
+                 </attribute>
+                </widget>
+                <widget class="QWidget" name="updater_tab">
+                 <attribute name="title">
+                  <string>Обновления</string>
+                 </attribute>
+                </widget>
+                <widget class="QWidget" name="subscription_tab">
+                 <attribute name="title">
+                  <string>Мои подписки</string>
                  </attribute>
                 </widget>
                </widget>
@@ -217,8 +227,8 @@
            <rect>
             <x>0</x>
             <y>0</y>
-            <width>714</width>
-            <height>541</height>
+            <width>81</width>
+            <height>28</height>
            </rect>
           </property>
           <layout class="QGridLayout" name="gridLayout_3">

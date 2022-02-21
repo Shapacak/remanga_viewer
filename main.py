@@ -4,8 +4,9 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton,
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QEvent
 from PyQt5 import uic
-from manga import view_manga_catalog, view_manga_page, view_manga, get_filters, filters_string_builder, get_search_catalog
-from gui import Ui_Form
+from manga import (view_manga_catalog, view_manga_page, view_manga, get_filters,
+                   filters_string_builder, get_search_catalog, init_library, add_manga_in_library,
+                   updater, continue_read_manga)
 
 
 
@@ -26,8 +27,10 @@ class MainWindow(QMainWindow):
         self.initSearchTab()
         self.initFramesToolbar()
         self.loadCatalog()
+        self.initLibrary()
+        self.initUpdateMangaLibrary()
         self.manga_list.itemClicked.connect(self.selectManga)
-        self.manga_select_chapter_btn.clicked.connect(self.selectChapter)
+        self.manga_select_chapter_btn.clicked.connect(self.selecterChapter)
         self.manga_branch.itemClicked.connect(self.selectedChapter)
         self.manga_read_btn.clicked.connect(self.readManga)
         self.setCentralWidget(self.stack)
@@ -42,6 +45,31 @@ class MainWindow(QMainWindow):
         elif self.stack.currentIndex() == 0:
             self.toolf.hide()
         return super(MainWindow, self).eventFilter(source, event)
+
+    def initLibrary(self):
+        self.lib_catalog = init_library()
+        lib_vbox = QVBoxLayout()
+        lib_list = QListWidget()
+        lib_list.itemClicked.connect(self.continueRead)
+        if self.lib_catalog:
+            for name in self.lib_catalog:
+                lib_list.addItem(name)
+        lib_vbox.addWidget(lib_list)
+        self.subscription_tab.setLayout(lib_vbox)
+
+    def initUpdateMangaLibrary(self):
+        upd_vbox = QVBoxLayout()
+        upd_list = QListWidget()
+        upd_list.itemClicked.connect(self.continueRead)
+        count_update = 0
+        if self.lib_catalog:
+            for name, info in self.lib_catalog.items():
+                if updater(info[1], info[0]):
+                    count_update += updater(info[1], info[0])
+                    upd_list.addItem(name)
+        upd_vbox.addWidget(upd_list)
+        self.updater_tab.setLayout(upd_vbox)
+        self.tabWidget.setTabText(2, f'{count_update} обновлений')
 
     def initMainToolbar(self):
         self.main_tool = QToolBar()
@@ -89,14 +117,16 @@ class MainWindow(QMainWindow):
         search_layout.addWidget(self.search_result_list)
         self.search_tab.setLayout(search_layout)
 
-
     def initFramesToolbar(self):
         self.toolf = QToolBar()
         self.toolf.setMovable(False)
         self.toolf.setFixedWidth(150)
         btn_back = QPushButton('На главную')
         btn_back.clicked.connect(lambda: self.stack.setCurrentIndex(0))
+        btn_add_read = QPushButton('Добавить в читаемое')
+        btn_add_read.clicked.connect(self.addRead)
         self.toolf.addWidget(btn_back)
+        self.toolf.addWidget(btn_add_read)
         self.tool_branch = QListWidget()
         self.tool_branch.itemClicked.connect(self.selectedChapterAndRead)
         self.toolf.addWidget(self.tool_branch)
@@ -115,21 +145,22 @@ class MainWindow(QMainWindow):
             self.manga_list.addItem(key)
 
     def selectManga(self, item):
+        self.current_manga = item.text()
         sender = self.sender().objectName()
         if sender == 'search_result_list':
-            view = self.search_catalog[item.text()]
+            self.view = self.search_catalog[self.current_manga]
         else:
-            view = self.catalog[item.text()]
+            self.view = self.catalog[self.current_manga]
         self.splitter.setSizes([300,100])
         self.horizontal_splitter.setSizes([1, 0])
-        page_manga = view_manga_page(*view)
+        page_manga = view_manga_page(*self.view)
         pix = QPixmap(page_manga['img'])
         self.manga_img.setPixmap(pix)
         self.manga_description.setText(page_manga['description'])
         self.branch = page_manga['branch']
         self.dir = page_manga['manga_dir']
 
-    def selectChapter(self):
+    def selecterChapter(self):
         self.horizontal_splitter.setSizes([0,1])
         self.manga_branch.clear()
         self.tool_branch.clear()
@@ -143,21 +174,29 @@ class MainWindow(QMainWindow):
     def selectedChapter(self, item):
         self.index_chapter = int(item.text().split('.')[0]) - 1
 
+    def continueRead(self, item):
+        self.current_manga = item.text()
+        self.index_chapter = self.lib_catalog[self.current_manga][2]
+        self.dir = self.lib_catalog[self.current_manga][1]
+        self.branch = continue_read_manga(self.dir)
+        self.selecterChapter()
+        self.readManga()
+
     def readManga(self):
         self.stack.setCurrentIndex(1)
-
         tome = str(self.branch[self.index_chapter]['tome'])
         chapter = str(self.branch[self.index_chapter]['chapter'])
         name = self.branch[self.index_chapter]['name']
         manga_id = str(self.branch[self.index_chapter]['id'])
-        manga_chapter = view_manga(tome, chapter, name, manga_id, self.dir)
+        self.manga_chapter = view_manga(tome, chapter, name, manga_id, self.dir)
         if self.vbox_frames is not None:
             while self.vbox_frames.count():
                 child = self.vbox_frames.takeAt(0)
                 if child.widget() is not None:
                     child.widget().deleteLater()
-        for frame in manga_chapter[:-1]:
-            pix = QPixmap(str(frame))
+        width_scaling = QPixmap(str(self.manga_chapter[0])).width()
+        for frame in self.manga_chapter[:-1]:
+            pix = QPixmap(str(frame)).scaledToWidth(width_scaling)
             lbl = QLabel()
             lbl.setPixmap(pix)
             lbl.setAlignment(Qt.AlignHCenter)
@@ -168,6 +207,10 @@ class MainWindow(QMainWindow):
         self.setMinimumWidth(pix.width())
         self.setMinimumHeight(600)
 
+    def addRead(self):
+        read_list = [self.current_manga, len(self.branch), self.dir, self.index_chapter]
+        add_manga_in_library(read_list)
+
     def selectedChapterAndRead(self, item):
         self.selectedChapter(item)
         self.readManga()
@@ -176,6 +219,8 @@ class MainWindow(QMainWindow):
         if len(self.branch)-1 >= self.index_chapter + 1:
             self.index_chapter += 1
             self.readManga()
+        if self.current_manga in self.lib_catalog:
+            self.addRead()
 
     def previousChapter(self):
         if self.index_chapter != 0:
