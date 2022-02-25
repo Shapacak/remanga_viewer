@@ -1,4 +1,3 @@
-import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton,
                              QAction, QToolBar, QListWidget, QComboBox, QVBoxLayout, QLineEdit)
 from PyQt5.QtGui import QPixmap, QImage
@@ -11,6 +10,7 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
         self.controller = controller
         self.model = model
+        self.screen_size = QApplication.primaryScreen().size()
         uic.loadUi('gui.ui', self)
         self.initUi()
         self.stack.setCurrentIndex(0)
@@ -19,7 +19,7 @@ class MainWindow(QMainWindow):
     def eventFilter(self, source, event):
         if self.stack.currentIndex() == 1 and event.type() == QEvent.MouseMove:
             if event.buttons() == Qt.NoButton:
-                if event.windowPos().toPoint().x() >= self.size().width() - 150:
+                if event.windowPos().toPoint().x() < 150:
                     self.toolf.show()
                 else:
                     self.toolf.hide()
@@ -37,12 +37,18 @@ class MainWindow(QMainWindow):
     def initSignals(self):
         self.manga_list.itemClicked.connect(self.controller.viewPage)
         self.manga_select_chapter_btn.clicked.connect(self.controller.viewBranch)
-        self.manga_branch.itemClicked.connect(self.controller.viewChapter)
-        self.toolf.btn_back.clicked.connect(self.controller.clickBack)
+        self.manga_branch.itemClicked.connect(self.controller.selectChapterAndView)
+        self.manga_branch.itemClicked.connect(self.controller.changeStackCurentIndex)
+        self.manga_select_chapter_btn.clicked.connect(self.controller.viewBranch)
+        self.toolf.tool_branch.clicked.connect(self.controller.selectChapterAndView)
+        self.toolf.btn_back.clicked.connect(self.controller.changeStackCurentIndex)
+        self.toolf.btn_next.clicked.connect(self.controller.viewNextChapter)
+        self.toolf.btn_previous.clicked.connect(self.controller.viewPreviousChapter)
+
 
     def initToolbar(self):
         self.toolf = ChapterToolBar()
-        self.addToolBar(Qt.RightToolBarArea, self.toolf)
+        self.addToolBar(Qt.LeftToolBarArea, self.toolf)
 
     def initCatalog(self, catalog_list):
         for i in catalog_list:
@@ -56,17 +62,22 @@ class MainWindow(QMainWindow):
         self.horizontal_splitter.setSizes([0, 1])
         self.manga_branch.clear()
 
-    def viewSelectedChapter(self):
-        self.stack.setCurrentIndex(1)
-        for i in self.controller.frames_list:
+    def viewSelectedChapter(self, frames_list):
+        if self.vbox_frames is not None:
+            while self.vbox_frames.count():
+                child = self.vbox_frames.takeAt(0)
+                if child.widget() is not None:
+                    child.widget().deleteLater()
+
+        for i in frames_list:
             im = QImage(i.image)
             pix = QPixmap.fromImage(im)
+            if pix.width() > self.screen_size.width():
+                pix.scaledToWidth(self.screen_size.width())
             lbl = QLabel()
-            lbl.setAlignment(Qt.AlignHCenter)
+            #lbl.setAlignment(Qt.AlignHCenter)
             lbl.setPixmap(pix)
             self.vbox_frames.addWidget(lbl)
-
-
 
 
 class ChapterToolBar(QToolBar):

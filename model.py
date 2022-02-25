@@ -41,30 +41,35 @@ class MangaPage:
         self.branch = Branch(max(response['content']['branches'], key=lambda x: x['count_chapters']))
 
 
-    def getPageBranch(self):
-        self.branch.initBranch()
-        return self.branch
-
-
 class Branch:
     _url_branch = 'https://api.remanga.org/api/titles/chapters/?ordering=index&count=60&branch_id='
-    def __init__(self, list_branches):
-        self.branch_id = str(list_branches['id'])
-        self.count_chapters = list_branches['count_chapters']
+    def __init__(self, list_branch):
+        self.branch_id = str(list_branch['id'])
+        self.count_chapters = list_branch['count_chapters']
         self.chapters_list = []
-        self.initBranch()
+
 
     def initBranch(self):
         response = requests.get(Branch._url_branch+self.branch_id).json()
         for i in response['content']:
-            chapter = Chapter(i)
+            self.appendChapter(i)
+
+    def appendChapter(self, data):
+        if self.chapters_list == []:
+            chapter = Chapter(data)
+            self.chapters_list.append(chapter)
+        else:
+            n = self.chapters_list[-1]
+            chapter = Chapter(data)
+            n.next_chapter = chapter
+            chapter.previous_chapter = n
             self.chapters_list.append(chapter)
 
     def getBranch(self):
         return self.chapters_list
 
-    def viewChapter(self):
-        pass
+    def getChapter(self, index):
+        return self.chapters_list[index]
 
 class Chapter:
     _url_chapter = 'https://api.remanga.org/api/titles/chapters/'
@@ -73,7 +78,11 @@ class Chapter:
         self.name = chapter_info_dict['name']
         self.chapter = str(chapter_info_dict['chapter'])
         self.tome = str(chapter_info_dict['tome'])
+        self.next_chapter = None
+        self.previous_chapter = None
         self.frames_list = []
+
+
 
     def initChapter(self):
         response = requests.get(Chapter._url_chapter + self.id).json()
@@ -81,6 +90,18 @@ class Chapter:
             for i in response['content']['pages']:
                 frame = Frame(i)
                 self.frames_list.append(frame)
+
+    def nextChapter(self):
+        if self.next_chapter:
+            return self.next_chapter
+        else:
+            return
+
+    def previousChapter(self):
+        if self.previous_chapter:
+            return self.previous_chapter
+        else:
+            return
 
     def getFrames(self):
         return self.frames_list
