@@ -58,28 +58,8 @@
               <item row="0" column="0">
                <widget class="QTabWidget" name="tabWidget">
                 <property name="currentIndex">
-                 <number>3</number>
+                 <number>-1</number>
                 </property>
-                <widget class="QWidget" name="filters_tab">
-                 <attribute name="title">
-                  <string>Фильтры</string>
-                 </attribute>
-                </widget>
-                <widget class="QWidget" name="search_tab">
-                 <attribute name="title">
-                  <string>Поиск</string>
-                 </attribute>
-                </widget>
-                <widget class="QWidget" name="updater_tab">
-                 <attribute name="title">
-                  <string>Обновления</string>
-                 </attribute>
-                </widget>
-                <widget class="QWidget" name="subscription_tab">
-                 <attribute name="title">
-                  <string>Мои подписки</string>
-                 </attribute>
-                </widget>
                </widget>
               </item>
              </layout>
