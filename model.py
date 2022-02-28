@@ -3,30 +3,118 @@ from pprint import pprint
 from PIL.ImageQt import ImageQt
 from PIL import Image
 from io import BytesIO
+import urllib.parse
 
 
 class MangaCatalog:
-    _url_catalog = 'https://api.remanga.org/api/search/catalog/?ordering=-rating&count=30&page='
+    _url_catalog = 'https://api.remanga.org/api/search/catalog/?count=30&page='
+    _url_search = 'https://api.remanga.org/api/search/?query='
     def __init__(self):
-        self.filters = ''
+        self.filters = Filter()
+        self.ordering = Ordering()
         self.page = 1
         self.catalog_list = []
+        self.search_catalog = []
+        self.lib_catalog = []
 
     def initCatalog(self):
-        response = requests.get(MangaCatalog._url_catalog).json()
+        response = requests.get(MangaCatalog._url_catalog+str(self.page)+self.ordering.getOrderingString()+self.filters.getFilterString()).json()
         for i in response['content']:
             page = MangaPage(i)
             self.catalog_list.append(page)
 
+    def initSearchCatalog(self, search_string, count=5):
+        self.search_catalog = []
+        encode_string = urllib.parse.quote(search_string.encode('utf-8'))
+        response = requests.get(MangaCatalog._url_search + encode_string + f'&count={str(count)}').json()
+        for i in response['content']:
+            page = MangaPage(i)
+            self.search_catalog.append(page)
+
+    def initLibCatalog(self, lib_list):
+        for k, v in lib_list.items():
+            page = MangaPage(v)
+            self.lib_catalog.append(page)
+
+    def clearCatalog(self):
+        self.catalog_list = []
+
+    def nextPage(self):
+        self.page += 1
+
+    def firstPage(self):
+        self.page = 1
+
+    def getSearchCatalog(self):
+        return self.search_catalog
+
     def getCatalog(self):
         return self.catalog_list
 
-    def filtredCatalog(self):
-        pass
+    def getLibCatalog(self):
+        return self.lib_catalog
+
+
+
+class Filter:
+    _url_filters = 'https://api.remanga.org/api/forms/titles/?get=genres&get=categories&get=types&get=status&get=age_limit'
+    _rep_names = {'genres': 'Жанры', 'categories': 'Категории',
+                 'types': 'Типы', 'status': 'Статус', 'age_limit': 'Возрастные ограничения'}
+    def __init__(self):
+        self.filter_string = ''
+        self.all_filters_data = {}
+        self.initFilters()
+
+    def initFilters(self):
+        response_all_filters = requests.get(Filter._url_filters).json()
+        for k in response_all_filters['content']:
+            if k in Filter._rep_names:
+                self.all_filters_data[Filter._rep_names[k]] = response_all_filters['content'][k]
+
+
+    def buildFilterString(self, filters_list):
+        if filters_list:
+            inv_names = {v:k for k,v in Filter._rep_names.items()}
+            filter_string = ''
+            for filter in filters_list:
+                    filter_string = filter_string + f'&{inv_names[filter[0]]}={filter[1]}'
+            self.filter_string = filter_string
+        else:
+            self.filter_string = ''
+
+    def getFilterString(self):
+        return self.filter_string
+
+    def getAllFilters(self):
+        return self.all_filters_data
+
+
+class Ordering:
+    _ordering = {'id': 'По новизне', 'chapter_date': 'По последним обновлениям', 'rating': 'По популярности',
+                         'votes': 'По лайкам', 'views': 'По просмотрам', 'count_chapters': 'По колличеству глав',
+                         'random': 'Случайно'}
+    def __init__(self):
+        self.ordering_string = '&ordering=-rating'
+
+    def buildOrderingString(self, ordering_list):
+        if ordering_list:
+            ordering_string = ''
+            for i in ordering_list:
+                ordering_string = ordering_string + f'&ordering=-{i}'
+            self.ordering_string = ordering_string
+        else:
+            self.ordering_string = '&ordering=-rating'
+
+    def getOrderingString(self):
+        return self.ordering_string
+
+    def getAllOrdering(self):
+        return Ordering._ordering
 
 
 class MangaPage:
     _url_page = 'https://api.remanga.org/api/titles/'
+    _url_img = 'https://remanga.org'
     def __init__(self, page_info_dict):
         self.url_directory = page_info_dict['dir']
         self.branch = None
@@ -37,8 +125,17 @@ class MangaPage:
     def initPage(self):
         response = requests.get(MangaPage._url_page + self.url_directory).json()
         self.description = response['content']['description']
-        self.img_url = response['content']['img']['high']
         self.branch = Branch(max(response['content']['branches'], key=lambda x: x['count_chapters']))
+        self.img_url = response['content']['img']['high']
+
+    def loadPageImg(self):
+        response = requests.get(MangaPage._url_img + self.img_url, stream=True)
+        im = Image.open(BytesIO(response.content))
+        image = ImageQt(im)
+        return image
+
+    def addToLibrary(self):
+        return [self.name, self.url_directory]
 
 
 class Branch:
@@ -82,8 +179,6 @@ class Chapter:
         self.previous_chapter = None
         self.frames_list = []
 
-
-
     def initChapter(self):
         response = requests.get(Chapter._url_chapter + self.id).json()
         if response['content']['is_paid'] == False:
@@ -105,6 +200,9 @@ class Chapter:
 
     def getFrames(self):
         return self.frames_list
+
+    def addToLibrary(self):
+        return self.id
 
 class Frame:
     def __init__(self, frame_info):
